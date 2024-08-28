@@ -1,0 +1,25 @@
+##
+## LTE Handover Failure Subscriber Ranking (using raw tables) For Prep event types depending on Category_Cd_ID_2 passed in.
+##
+## Named PreparedStatement Parameter:
+##
+##     :dateFrom       starting time
+##     :dateTo         ending time
+##     :categoryID2  category ID 2
+
+#set ($columnsToSelect=["IMSI"])
+#set ($conditionColumns=["CATEGORY_ID_2"])
+
+SELECT
+    #if($count > 0)
+      top $count
+    #end
+RANK()
+    OVER (order by Failures desc) as Rank,
+    rawview.IMSI as IMSI,
+    count (*) AS Failures,
+    $CATEGORY_ID_2  as 'CATEGORY_ID_2'
+FROM
+            #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_WITH_TAC_EXCLUSION_IMSI0_EXCLUSION_SPECIFY_COLUMNS($TECH_PACK_LIST.getAllRawTables()  "rawview" $conditionColumns $columnsToSelect),
+    GROUP BY
+    rawview.IMSI

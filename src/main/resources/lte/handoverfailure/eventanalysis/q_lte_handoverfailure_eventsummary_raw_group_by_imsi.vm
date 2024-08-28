@@ -1,0 +1,41 @@
+##
+## LTE Handover Failure IMSI Group Event Analysis (using raw tables)
+##
+## Named PreparedStatement Parameter:
+##
+##     :dateFrom   starting time
+##     :dateTo     ending time#
+
+#set($columnsToSelect=["EVENT_ID", "IMSI"])
+#set ($conditionColumns=["CATEGORY_ID_2"])
+#set($groupTable="GROUP_TYPE_E_IMSI")
+#set($groupnameColumn="GROUP_NAME")
+#set($joinKeys=["IMSI"])
+
+SELECT
+    '${groupname}' as 'Group Name',
+    data.EVENT_ID AS 'Event ID',
+    eventDesc.EVENT_ID_DESC as 'Event Type',
+    failures as 'Failures',
+    IMPACTED_SUBSCRIBERS as 'Impacted Subscriber'
+FROM
+    (
+        select
+            count (*) as failures,
+            EVENT_ID,
+            count (distinct rawview.IMSI)
+        from
+        #if ($timerange=="TR_4")
+        #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_CONDITION_COLUMNS_GROUPS_WEEK($TECH_PACK_LIST.getAllRawTables() "rawview" $conditionColumns $columnsToSelect)
+        #else
+        #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_CONDITION_COLUMNS_GROUPS($TECH_PACK_LIST.getAllRawTables() "rawview" $conditionColumns $columnsToSelect)
+        #end
+        group by
+            EVENT_ID
+    ) as data(FAILURES, EVENT_ID, IMPACTED_SUBSCRIBERS)
+    join
+        DIM_E_LTE_HFA_EVENTTYPE eventDesc
+    on(
+        eventDesc.EVENT_ID = data.EVENT_ID
+        and eventDesc.CATEGORY_ID_2= :categoryId
+    )

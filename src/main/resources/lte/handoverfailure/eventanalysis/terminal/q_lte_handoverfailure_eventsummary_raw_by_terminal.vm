@@ -1,0 +1,55 @@
+##
+## LTE Handover Failure Analysis Terminal Event Analysis (using raw tables)
+##
+##
+## Named PreparedStatement Parameter:
+##
+##     :dateFrom   starting time
+##     :dateTo     ending time#
+
+#set($conditionColumns=["TAC","CATEGORY_ID_2"])
+#set($columnsToSelect=["EVENT_ID", "IMSI"])
+
+SELECT
+    :TAC as 'TAC',
+    case when (TAC != null AND  TAC != 0 ) then isnull(topology.VENDOR_NAME,'Manufacturer Unknown')
+         when (TAC = 0 ) then isnull(topology.VENDOR_NAME,'Manufacturer Invalid')
+         else null end as 'Terminal Make',
+    case when (TAC != null AND  TAC != 0 ) then isnull(topology.MARKETING_NAME,'Model Unknown')
+         when (TAC = 0 ) then isnull(topology.MARKETING_NAME,'Model Invalid')
+         else null end as 'Terminal Model',
+    eventDesc.EVENT_ID_DESC as 'Event Type',
+    data.EVENT_ID AS 'Event ID',
+    FAILURES as 'Failures',
+    IMPACTED_SUBSCRIBERS as 'Impacted Subscribers'
+FROM
+    (
+        select
+            count (*),
+            :TAC,
+            EVENT_ID,
+            count (distinct rawview.IMSI)
+        from
+            #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_SPECIFY_COLUMNS($TECH_PACK_LIST.getAllRawTables() "rawview" $conditionColumns $columnsToSelect)
+        group by
+            EVENT_ID
+    ) as data(FAILURES, TAC, EVENT_ID, IMPACTED_SUBSCRIBERS)
+    left outer join
+    (
+         select
+            topo.TAC,
+            topo.VENDOR_NAME,
+            topo.MARKETING_NAME
+        from
+            topo.dc.DIM_E_SGEH_TAC topo
+        where
+            topo.TAC = :TAC
+    )    as topology
+    on(
+        topology.TAC = data.TAC
+    )
+    inner join
+        DIM_E_LTE_HFA_EVENTTYPE eventDesc
+    on (
+        eventDesc.EVENT_ID = data.EVENT_ID
+        and eventDesc.CATEGORY_ID_2= :CATEGORY_ID_2 )

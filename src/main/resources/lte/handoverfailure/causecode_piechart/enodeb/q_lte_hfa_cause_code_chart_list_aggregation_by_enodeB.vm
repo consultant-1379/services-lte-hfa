@@ -1,0 +1,32 @@
+##
+## LTE Handover Failure Analysis eNodeB Cause Code List (using aggregation tables)
+##
+##
+## Named PreparedStatement Parameter:
+##
+##     :dateFrom   starting time
+##     :dateTo     ending time#
+select	
+	errRef.EVENT_ID || '-'  || errRef.CAUSE_CODE as CAUSE_CODE,
+	ccref.CAUSE_CODE_DESC_PIE as CAUSE_CODE_DESC
+from
+	(
+		select
+			EVENT_ID,
+			CAUSE_CODE
+		from		
+			dc.$aggregationView 
+		where
+			HIER3_ID = :HIER3_ID
+			and #GET_DATETIME_RANGE()
+			and CAUSE_CODE is not null
+		group by
+			CAUSE_CODE,
+			EVENT_ID
+	) as errRef,
+	dc.DIM_E_LTE_HFA_CAUSE_CODE as ccref,
+where
+	errRef.CAUSE_CODE = ccref.CAUSE_CODE
+	and errRef.EVENT_ID = ccref.EVENT_ID
+order by
+	CAUSE_CODE	

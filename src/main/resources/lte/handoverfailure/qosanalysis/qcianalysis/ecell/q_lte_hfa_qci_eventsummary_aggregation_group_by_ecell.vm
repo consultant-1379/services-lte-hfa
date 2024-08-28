@@ -1,0 +1,51 @@
+##
+## LTE HFA QOS QCI ecell Event Summary Analysis (using aggregation tables)
+##
+## Velocity Parameter:
+##
+## Named PreparedStatement Parameter:
+##
+##     :dateFrom   starting time
+##     :dateTo     ending time
+##
+
+#set($conditionColumns=["QCI_ID", "CATEGORY_ID_2"])
+#set($columnsToSelect=["HIER321_ID", "QCI_ID", "CATEGORY_ID_2", "IMSI", "EVENT_ID"])
+#set($columnsToIncludeInNewView=["EVENT_ID"])
+
+#set($groupTable="GROUP_TYPE_E_RAT_VEND_HIER321")
+#set($groupnameColumn="GROUP_NAME")
+#set($joinKeys=["HIER321_ID"])
+
+SELECT
+    #if($count > 0)
+      top $count
+    #end
+    '${groupname}' as 'Group Name',
+    :QCI_ID as QCI_ID,
+    aggView.EVENT_ID as EVENT_ID,
+    DIM_E_LTE_HFA_EVENTTYPE.EVENT_ID_DESC as 'Event Type',
+    aggView.NO_OF_ERRORS as Failures,
+    subscribers.IMPACTED_SUBSCRIBERS as 'Impacted Subscribers'
+FROM
+    #UNION_ALL_AGGREGATION_VIEWS_WITH_SPECIFIC_COLUMNS_POST_AGGREGATE_WITH_CONDITION_GROUP($aggregationViewList "aggView" $columnsToIncludeInNewView "NO_OF_ERRORS" $conditionColumns)
+left outer join
+    (
+        select
+            count(distinct rawview.IMSI) as IMPACTED_SUBSCRIBERS,
+            EVENT_ID
+        from
+            #if ($timerange == "TR_4")
+                #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_WITH_TAC_EXCLUSION_CONDITION_COLUMNS_GROUPS_WEEK($TECH_PACK_LIST.getAllRawTablesWithMeasurementType() "rawview" $conditionColumns $columnsToSelect)
+            #else
+                #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_WITH_TAC_EXCLUSION_CONDITION_COLUMNS_GROUPS($TECH_PACK_LIST.getAllRawTablesWithMeasurementType() "rawview" $conditionColumns $columnsToSelect)
+            #end
+        group by
+            EVENT_ID
+    ) as subscribers
+on
+    (aggView.EVENT_ID = subscribers.EVENT_ID)
+left outer join
+    DIM_E_LTE_HFA_EVENTTYPE
+on
+    DIM_E_LTE_HFA_EVENTTYPE.EVENT_ID = aggView.EVENT_ID

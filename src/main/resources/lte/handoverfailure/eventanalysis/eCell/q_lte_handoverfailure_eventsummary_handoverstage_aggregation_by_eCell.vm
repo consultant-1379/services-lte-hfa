@@ -1,0 +1,69 @@
+#set($conditionColumns=["HIER321_ID"])
+#set($columnsToSelect=["CATEGORY_ID_2", "IMSI"])
+
+SELECT
+    :HIER321_ID    AS    HIER321_ID,
+    topology.VENDOR,
+    topology.HIERARCHY_3,
+    topology.HIERARCHY_1,
+    eventDesc.CATEGORY_ID_2_DESC AS 'Handover Stage',
+    aggView.CATEGORY_ID_2,
+    aggView.Failures as 'Failures',
+    subscribers.IMPACTED_SUBSCRIBERS as 'Impacted Subscribers'
+FROM
+    (select
+        CATEGORY_ID_2,
+        :HIER321_ID    AS    HIER321_ID,
+        sum(NO_OF_ERRORS)
+    from
+        $aggregationView as tempAgg
+    where
+        tempAgg.HIER321_ID = :HIER321_ID
+        and
+        #GET_DATETIME_RANGE()
+    group by
+        CATEGORY_ID_2
+    ) as aggView(CATEGORY_ID_2, HIER321_ID,Failures)
+    left outer join
+    (
+        select
+            count(distinct rawview.IMSI),
+            CATEGORY_ID_2
+        from
+            #if ($timerange == "TR_4")
+            #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_WITH_TAC_EXCLUSION_SPECIFY_COLUMNS_WEEK($TECH_PACK_LIST.getAllRawTables() "rawview" $conditionColumns $columnsToSelect)
+            #else
+            #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_WITH_TAC_EXCLUSION_SPECIFY_COLUMNS($TECH_PACK_LIST.getAllRawTables() "rawview" $conditionColumns $columnsToSelect)
+            #end
+        group by
+            CATEGORY_ID_2
+        ) as subscribers(IMPACTED_SUBSCRIBERS, CATEGORY_ID_2)
+    on (
+        aggView.CATEGORY_ID_2 = subscribers.CATEGORY_ID_2
+        )
+    join(
+    select distinct
+        CATEGORY_ID_2,CATEGORY_ID_2_DESC
+        from
+        DIM_E_LTE_HFA_EVENTTYPE) eventDesc
+    on(
+        eventDesc.CATEGORY_ID_2 = aggView.CATEGORY_ID_2
+      )
+    left outer join
+      (
+        select
+            HIERARCHY_1,
+            HIERARCHY_3,
+            HIER321_ID,
+            VENDOR
+        from
+            DIM_E_LTE_HIER321
+        where HIER321_ID = :HIER321_ID
+                GROUP BY HIERARCHY_1,
+            HIERARCHY_3,
+            HIER321_ID,
+            VENDOR
+    ) as topology
+     on (
+     aggView.HIER321_ID = topology.HIER321_ID
+     )

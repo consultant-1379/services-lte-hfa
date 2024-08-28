@@ -1,0 +1,34 @@
+##
+## LTE Handover Failure IMSI Event Analysis HandoverStage (using raw tables)
+##
+## Named PreparedStatement Parameter:
+##
+##     :dateFrom   starting time
+##     :dateTo     ending time#
+
+
+#set ($conditionColumns=["IMSI","CATEGORY_ID_2"])
+#set ($columnsToSelect =["CATEGORY_ID_2"])
+
+SELECT
+	$imsi AS IMSI,
+	handoverStageDesc.CATEGORY_ID_2_DESC AS 'Handover Stage',
+	data.CATEGORY_ID_2 AS 'Category ID',
+	FAILURES as 'Failures'
+FROM 	
+	(	select 
+			count (*) as failures,
+			CATEGORY_ID_2
+		from 
+			#REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_WITH_TAC_EXCLUSION_SPECIFY_COLUMNS($TECH_PACK_LIST.getAllRawTables() "rawview" $conditionColumns $columnsToSelect) 
+		group by
+			CATEGORY_ID_2
+	) as data(FAILURES, CATEGORY_ID_2) 	
+	join 	(
+		select distinct 
+		CATEGORY_ID_2,CATEGORY_ID_2_DESC 
+		from
+		DIM_E_LTE_HFA_EVENTTYPE)  handoverStageDesc 
+	on(
+		handoverStageDesc.CATEGORY_ID_2 = data.CATEGORY_ID_2
+	  )

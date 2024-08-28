@@ -1,0 +1,54 @@
+##
+## LTE HFA Analysis eCell group Cause Code Analysis (using raw tables)
+##
+##
+## Named PreparedStatement Parameter:
+##
+##     :dateFrom   starting time
+##     :dateTo     ending time#
+
+#set($columnsToSelect=["HIER321_ID", "EVENT_ID", "IMSI", "CAUSE_CODE"])
+#set($notNullColumns=["CAUSE_CODE"])
+#set($groupTable="GROUP_TYPE_E_RAT_VEND_HIER321")
+#set($groupnameColumn="GROUP_NAME")
+#set($joinKeys=["HIER321_ID"])
+
+SELECT
+    '${groupname}' as 'Group Name',
+    data.EVENT_ID AS 'Event ID',
+    eventDesc.EVENT_ID_DESC as 'Event Type',
+    data.CAUSE_CODE as 'Cause Code ID',
+    cc.CAUSE_CODE_DESC as 'Cause Code Description',
+    FAILURES as 'Occurrences',
+    IMPACTED_SUBSCRIBERS as 'Impacted Subscribers'
+FROM
+    (
+        select
+            EVENT_ID,
+            CAUSE_CODE,
+            count(*),
+            count(distinct(imsi))
+        from
+            #if ($timerange == "TR_4")
+                #REPLACE_RAW_VIEW_WITH_RAW_TABLES_WITH_TAC_EXCLUSION_SPECIFY_COLUMNS_AND_NOT_NULL_COLUMNS_GROUPS_WEEK($TECH_PACK_LIST.getAllRawTables() "rawview" $columnsToSelect $notNullColumns)
+            #else
+                #REPLACE_RAW_VIEW_WITH_RAW_TABLES_WITH_TAC_EXCLUSION_SPECIFY_COLUMNS_AND_NOT_NULL_COLUMNS_GROUPS($TECH_PACK_LIST.getAllRawTables() "rawview" $columnsToSelect $notNullColumns)
+            #end
+            group by
+            EVENT_ID,
+            CAUSE_CODE
+    ) as data(EVENT_ID,CAUSE_CODE,FAILURES,IMPACTED_SUBSCRIBERS)
+    join    
+        DIM_E_LTE_HFA_EVENTTYPE eventDesc
+    on(
+        eventDesc.EVENT_ID = data.EVENT_ID
+    )
+    left outer join
+        DIM_E_LTE_HFA_CAUSE_CODE cc
+    on(
+        cc.EVENT_ID = data.EVENT_ID and
+        cc.CAUSE_CODE = data.CAUSE_CODE
+    )
+order by
+data.EVENT_ID,
+data.CAUSE_CODE

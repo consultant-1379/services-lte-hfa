@@ -1,0 +1,54 @@
+
+## LTE Handover Failure Analysis Controller Ranking (using aggregation tables)
+##
+## Velocity Parameter: 
+##		
+## Named PreparedStatement Parameter:
+##
+##     :dateFrom   starting time
+##     :dateTo     ending time
+##
+
+SELECT 
+	#if($count > 0)
+	  top $count
+	#end
+	RAW_TABLE.HIER3_ID as 'HIER3_ID',
+	$CATEGORY_ID_2  as 'CATEGORY_ID_2',
+	RANK() OVER (ORDER BY Failures DESC) as 'Rank',
+	VENDOR as 'RAN Vendor',
+	HIERARCHY_3 as 'eNodeB',
+	FAILURES as 'Failures',
+    RAT_TABLE.RAT_DESC
+FROM
+	(
+		SELECT
+			SUM(NO_OF_ERRORS) as FAILURES,
+			HIER3_ID
+		from
+			$aggregationView
+		WHERE
+			CATEGORY_ID_2 = :CATEGORY_ID_2 AND
+			#GET_DATETIME_RANGE()
+		GROUP BY HIER3_ID	
+			) as RAW_TABLE
+LEFT OUTER JOIN
+	(
+		SELECT
+			HIER3_ID, HIERARCHY_3, VENDOR, RAT
+		FROM
+			DIM_E_LTE_HIER321
+		GROUP BY
+			HIER3_ID, HIERARCHY_3, VENDOR, RAT
+	) as TOPO_TABLE
+	ON RAW_TABLE.HIER3_ID = TOPO_TABLE.HIER3_ID
+LEFT OUTER JOIN
+	(
+		SELECT
+			RAT, RAT_DESC
+		FROM
+			DIM_E_SGEH_RAT
+		GROUP BY
+			RAT, RAT_DESC
+	) as RAT_TABLE
+    ON RAT_TABLE.RAT = TOPO_TABLE.RAT

@@ -1,0 +1,49 @@
+##
+## LTE Handover Failure Analysis enodeB Cause Code Analysis (using raw tables)
+##
+##
+## Named PreparedStatement Parameter:
+##
+##     :dateFrom   starting time
+##     :dateTo     ending time#
+
+#set($conditionColumns=["HIER3_ID"])
+#set($columnsToSelect=["EVENT_ID", "IMSI", "CAUSE_CODE"])
+#set($notNullColumns=["CAUSE_CODE"])
+
+SELECT 
+	$HIER3_ID,
+	data.EVENT_ID AS 'Event ID', 
+	eventDesc.EVENT_ID_DESC as 'Event Type',
+	data.CAUSE_CODE as 'Cause Code ID',
+	cc.CAUSE_CODE_DESC as 'Cause Code Description',
+	FAILURES as 'Occurrences', 
+	IMPACTED_SUBSCRIBERS as 'Impacted Subscribers',
+	:NODE as Node
+FROM 	
+	(	
+		select 
+            EVENT_ID,
+            CAUSE_CODE,
+            count(*),
+            count(distinct(imsi))
+		from 
+			#REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_WITH_TAC_EXCLUSION_SPECIFY_COLUMNS_AND_NOT_NULL_COLUMNS($TECH_PACK_LIST.getAllRawTables() "rawview" $conditionColumns $columnsToSelect $notNullColumns)
+		group by
+            EVENT_ID,
+            CAUSE_CODE
+	) as data(EVENT_ID,CAUSE_CODE,FAILURES,IMPACTED_SUBSCRIBERS) 
+	join	
+		DIM_E_LTE_HFA_EVENTTYPE eventDesc
+	on(
+		eventDesc.EVENT_ID = data.EVENT_ID
+	)
+	left outer join
+		DIM_E_LTE_HFA_CAUSE_CODE cc
+	on(
+		cc.EVENT_ID = data.EVENT_ID and
+		cc.CAUSE_CODE = data.CAUSE_CODE
+	)
+order by
+data.EVENT_ID,
+data.CAUSE_CODE

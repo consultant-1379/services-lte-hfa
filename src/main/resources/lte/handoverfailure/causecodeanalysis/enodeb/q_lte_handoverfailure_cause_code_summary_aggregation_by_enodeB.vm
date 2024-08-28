@@ -1,0 +1,77 @@
+##
+## LTE Handover Failure Analysis enodeB Cause Code Analysis (using aggregation tables)
+##
+## Velocity Parameter:
+##
+##        $aggregationView the aggregation view to query against
+##
+##
+## Named PreparedStatement Parameter:
+##
+##     :dateFrom   starting time
+##     :dateTo     ending time#
+
+#set($conditionColumns=["HIER3_ID"])
+#set($columnsToSelect=["EVENT_ID", "IMSI", "CAUSE_CODE"])
+#set($notNullColumns=["CAUSE_CODE"])
+
+SELECT
+    $HIER3_ID,
+    aggView.EVENT_ID AS 'Event ID',
+    eventDesc.EVENT_ID_DESC as 'Event Type',
+    aggView.CAUSE_CODE as 'Cause Code ID',
+    cc.CAUSE_CODE_DESC as 'Cause Code Description',
+    FAILURES as 'Occurrences',
+    subscribers.IMPACTED_SUBSCRIBERS as 'Impacted Subscribers',
+    :NODE as Node
+FROM
+    (select
+        EVENT_ID,
+        CAUSE_CODE,
+        sum(NO_OF_ERRORS)
+    from
+        $aggregationView as tempAgg
+    where
+        tempAgg.HIER3_ID = :HIER3_ID
+        and
+        #GET_DATETIME_RANGE()
+    group by
+        EVENT_ID,
+        CAUSE_CODE
+    ) as aggView(EVENT_ID, CAUSE_CODE, Failures)
+    left outer join
+    (
+        select
+            count(distinct rawview.IMSI),
+            CAUSE_CODE,
+            EVENT_ID
+        from
+            #if($timerange == "TR_4")
+            #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_WITH_TAC_EXCLUSION_SPECIFY_COLUMNS_AND_NOT_NULL_COLUMNS_WEEK($TECH_PACK_LIST.getAllRawTables() "rawview" $conditionColumns $columnsToSelect $notNullColumns)
+            #else
+            #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_WITH_TAC_EXCLUSION_SPECIFY_COLUMNS_AND_NOT_NULL_COLUMNS($TECH_PACK_LIST.getAllRawTables() "rawview" $conditionColumns $columnsToSelect $notNullColumns)
+            #end
+
+        group by
+            EVENT_ID,
+            CAUSE_CODE
+        ) as subscribers(IMPACTED_SUBSCRIBERS, CAUSE_CODE, EVENT_ID)
+    on (
+        aggView.EVENT_ID = subscribers.EVENT_ID
+        and
+        aggView.CAUSE_CODE = subscribers.CAUSE_CODE
+        )
+    join
+        dc.DIM_E_LTE_HFA_EVENTTYPE eventDesc
+        on(
+            eventDesc.EVENT_ID = aggView.EVENT_ID
+        )
+    left outer join
+        DIM_E_LTE_HFA_CAUSE_CODE cc
+    on(
+        cc.EVENT_ID = aggView.EVENT_ID and
+        cc.CAUSE_CODE = aggView.CAUSE_CODE
+    )
+order by
+aggView.EVENT_ID,
+aggView.CAUSE_CODE

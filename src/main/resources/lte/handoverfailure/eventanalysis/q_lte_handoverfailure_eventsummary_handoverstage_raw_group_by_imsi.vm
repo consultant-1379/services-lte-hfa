@@ -1,0 +1,66 @@
+##
+## LTE Handover Failure IMSI Group Event Analysis (using raw tables)
+##
+## Named PreparedStatement Parameter:
+##
+##     :dateFrom   starting time
+##     :dateTo     ending time#
+
+#set ($columnsToSelect =["CATEGORY_ID_2","IMSI"])
+#set($groupTable="GROUP_TYPE_E_IMSI")
+#set($groupnameColumn="GROUP_NAME")
+#set($joinKeys=["IMSI"])
+#macro (REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_SPECIFY_COLUMNS_GROUPS $rawtables $rawview $columnsToIncludeInNewView)
+(
+   #foreach ($rawtable in $rawtables)
+   select
+   GROUP_NAME,
+       #foreach ($columnToInclude in $columnsToIncludeInNewView)
+              $rawtable.$columnToInclude
+              #if($velocityCount < $columnsToIncludeInNewView.size())
+              ,
+              #end
+       #end
+   from dc.$rawtable,
+       $groupTable group_table
+   where
+       #if ($timerange=="TR_4")
+         #GET_DATE_RANGE_LOCAL()
+         #else
+       #GET_DATETIME_RANGE()
+       #end
+   and #GET_JOIN($rawtable "group_table" $joinKeys)
+   and group_table.${groupnameColumn} = :$ApplicationConstants.GROUP_NAME_PARAM
+       #if($velocityCount < $rawtables.size())
+       union all
+       #end
+   #end
+ ) as $rawview
+ #end
+
+SELECT
+    '${groupname}' as 'IMSI Group',
+    handoverStageDesc.CATEGORY_ID_2_DESC AS 'Handover Stage',
+    data.CATEGORY_ID_2 AS 'Category ID',
+    FAILURES as 'Failures',
+    IMPACTED_SUBSCRIBERS as 'Impacted Subscriber'
+FROM
+    (
+        select
+            count (*) as failures,
+            CATEGORY_ID_2,
+            count (distinct rawview.IMSI)
+        from
+            #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_SPECIFY_COLUMNS_GROUPS($TECH_PACK_LIST.getAllRawTables() "rawview" $columnsToSelect)
+        group by
+            CATEGORY_ID_2
+    ) as data(FAILURES, CATEGORY_ID_2, IMPACTED_SUBSCRIBERS)
+    join (
+        select distinct
+        CATEGORY_ID_2,CATEGORY_ID_2_DESC
+        from
+        DIM_E_LTE_HFA_EVENTTYPE)  handoverStageDesc
+    on(
+        handoverStageDesc.CATEGORY_ID_2 = data.CATEGORY_ID_2
+      )
+

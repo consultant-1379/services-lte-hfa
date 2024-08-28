@@ -1,0 +1,43 @@
+##
+## Author : Jegan
+## LTE Handover Failures Cause Code Ranking(using raw tables)
+##
+## Velocity Parameter: 
+##		
+## Named PreparedStatement Parameter:
+##
+##     :dateFrom   starting time
+##     :dateTo     ending time
+##
+#set($columnsToSelect=["CAUSE_CODE, EVENT_ID"])
+#set ($conditionColumns=["CATEGORY_ID_2"])
+SELECT
+	#if($count > 0)
+	  top $count
+	#end
+	rank() over (order by Failures desc) as 'Rank',
+	DIM_E_LTE_HFA_EVENTTYPE.EVENT_ID_DESC as 'Event Type',
+	CAUSE_CODE_DESC as 'Cause Code',
+	RAW_TABLE.CAUSE_CODE as 'Cause Code ID',
+	FAILURES as 'Failures'
+FROM
+	(
+		SELECT
+			EVENT_ID,
+			CAUSE_CODE,
+			count (*) AS FAILURES
+		FROM
+			#REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_WITH_TAC_EXCLUSION_SPECIFY_COLUMNS($TECH_PACK_LIST.getAllRawTables() "rawview" $conditionColumns $columnsToSelect)
+		WHERE
+			CAUSE_CODE is not null
+		GROUP BY
+			CAUSE_CODE,EVENT_ID
+	) RAW_TABLE
+JOIN
+	DIM_E_LTE_HFA_CAUSE_CODE
+ON
+	RAW_TABLE.CAUSE_CODE = DIM_E_LTE_HFA_CAUSE_CODE.CAUSE_CODE AND 
+	RAW_TABLE.EVENT_ID = DIM_E_LTE_HFA_CAUSE_CODE.EVENT_ID
+ JOIN
+	DIM_E_LTE_HFA_EVENTTYPE
+ON 	RAW_TABLE.EVENT_ID=DIM_E_LTE_HFA_EVENTTYPE.EVENT_ID

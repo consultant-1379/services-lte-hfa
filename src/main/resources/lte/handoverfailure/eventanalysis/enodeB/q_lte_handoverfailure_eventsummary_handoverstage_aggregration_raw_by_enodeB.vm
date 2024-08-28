@@ -1,0 +1,75 @@
+##
+## LTE Handover Failure enodeB HandoverStage Analysis (using aggregration tables)
+##
+## Named PreparedStatement Parameter:
+##
+##     :dateFrom   starting time
+##     :dateTo     ending time#
+
+
+#set($conditionColumns=["HIER3_ID"])
+#set($columnsToSelect=["CATEGORY_ID_2", "IMSI"])
+
+SELECT
+    :HIER3_ID            AS    HIER3_ID,
+    topology.VENDOR as 'RAN Vendor',
+    topology.HIERARCHY_3,
+    eventDesc.CATEGORY_ID_2_DESC AS 'Handover Stage',
+    aggView.CATEGORY_ID_2 AS 'Category ID',
+    aggView.Failures as 'Failures',
+    subscribers.IMPACTED_SUBSCRIBERS as 'Impacted Subscribers'
+FROM
+    (select
+        CATEGORY_ID_2,
+        :HIER3_ID as HIER3_ID,
+        sum(NO_OF_ERRORS)
+    from
+        $aggregationView as tempAgg
+    where
+        tempAgg.HIER3_ID = :HIER3_ID
+        and
+        #GET_DATETIME_RANGE()
+    group by
+        CATEGORY_ID_2
+    ) as aggView(CATEGORY_ID_2, HIER3_ID,Failures)
+    left outer join
+    (
+        select
+            count(distinct rawview.IMSI),
+            CATEGORY_ID_2
+        from
+            #if($timerange == "TR_4")
+            #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_WITH_TAC_EXCLUSION_SPECIFY_COLUMNS_WEEK($TECH_PACK_LIST.getAllRawTables() "rawview" $conditionColumns $columnsToSelect)
+            #else
+            #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_WITH_TAC_EXCLUSION_SPECIFY_COLUMNS($TECH_PACK_LIST.getAllRawTables() "rawview" $conditionColumns $columnsToSelect)
+            #end
+
+        group by
+            CATEGORY_ID_2
+        ) as subscribers(IMPACTED_SUBSCRIBERS, CATEGORY_ID_2)
+    on (
+        aggView.CATEGORY_ID_2 = subscribers.CATEGORY_ID_2
+        )
+    join (select distinct
+        CATEGORY_ID_2,CATEGORY_ID_2_DESC
+        from DIM_E_LTE_HFA_EVENTTYPE
+        ) eventDesc
+        on (
+         eventDesc.CATEGORY_ID_2 = aggView.CATEGORY_ID_2
+            )
+                      left outer join
+        (
+        select
+            HIERARCHY_3,
+             HIER3_ID,
+            VENDOR
+        from
+            DIM_E_LTE_HIER321
+        where HIER3_ID= :HIER3_ID
+        GROUP BY HIERARCHY_3,
+             HIER3_ID,
+            VENDOR
+    ) as topology
+            on (
+            aggView.HIER3_ID = topology.HIER3_ID
+            )

@@ -1,0 +1,73 @@
+##
+## LTE Handover Failure enodeB Event Analysis (using raw tables)
+##
+##
+## Named PreparedStatement Parameter:
+##
+##     :dateFrom   starting time
+##     :dateTo     ending time#
+
+#set($conditionColumns=["HIER3_ID", "CATEGORY_ID_2"])
+#set($columnsToSelect=["EVENT_ID", "IMSI"])
+
+SELECT
+    :HIER3_ID        AS    HIER3_ID,
+    topology.VENDOR as 'RAN Vendor',
+    topology.HIERARCHY_3,
+    eventDesc.EVENT_ID_DESC as 'Event Type',
+    aggView.EVENT_ID AS 'Event ID',
+    Failures,
+    subscribers.IMPACTED_SUBSCRIBERS as 'Impacted Subscribers'
+FROM
+    (select
+        EVENT_ID,
+        :HIER3_ID        AS    HIER3_ID,
+        sum(NO_OF_ERRORS)
+    from
+        $aggregationView as tempAgg
+    where
+        tempAgg.HIER3_ID = :HIER3_ID
+        and
+        #GET_DATETIME_RANGE()
+    group by
+        EVENT_ID
+    ) as aggView(EVENT_ID, HIER3_ID, Failures)
+    left outer join
+    (
+        select
+            count(distinct rawview.IMSI),
+            EVENT_ID
+        from
+            #if($timerange == "TR_4")
+            #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_WITH_TAC_EXCLUSION_SPECIFY_COLUMNS_WEEK($TECH_PACK_LIST.getAllRawTables() "rawview" $conditionColumns $columnsToSelect)
+            #else
+            #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_WITH_TAC_EXCLUSION_SPECIFY_COLUMNS($TECH_PACK_LIST.getAllRawTables() "rawview" $conditionColumns $columnsToSelect)
+            #end
+        group by
+            EVENT_ID
+        ) as subscribers(IMPACTED_SUBSCRIBERS, EVENT_ID)
+    on (
+        aggView.EVENT_ID = subscribers.EVENT_ID
+        )
+    join
+        DIM_E_LTE_HFA_EVENTTYPE eventDesc
+    on(
+        eventDesc.EVENT_ID = aggView.EVENT_ID
+        and eventDesc.CATEGORY_ID_2= :categoryId
+    )
+    left outer join
+    (
+        select
+            HIERARCHY_3,
+            HIER3_ID,
+            VENDOR
+        from
+            DIM_E_LTE_HIER321
+            WHERE HIER3_ID = :HIER3_ID
+                    GROUP BY HIERARCHY_3,
+             HIER3_ID,
+            VENDOR
+    ) as topology
+            on (
+            aggView.HIER3_ID = topology.HIER3_ID
+            )

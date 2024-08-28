@@ -1,0 +1,50 @@
+##
+## LTE Handover Failure Analysis eNodeB Cause Code List (using raw tables)
+##
+##
+## Named PreparedStatement Parameter:
+##
+##     :dateFrom   starting time
+##     :dateTo     ending time#
+	
+#macro(LTE_HFA_ENODEB_CCAS_QUERY $errTable)
+select
+	EVENT_ID,
+	CAUSE_CODE
+from
+	dc.${errTable}
+where
+	HIER3_ID = :HIER3_ID
+	and #GET_DATETIME_RANGE()
+	and #GET_TAC_EXCLUSION()
+	and CAUSE_CODE is not null
+#end
+
+select
+	events.EVENT_ID || '-'  || events.CAUSE_CODE as CAUSE_CODE,
+	ccref.CAUSE_CODE_DESC_PIE as CAUSE_CODE_DESC
+from
+	(
+		select
+			EVENT_ID,
+			CAUSE_CODE
+		from
+			(
+				#foreach ($errtable in $TECH_PACK_LIST.getAllRawTables())
+					#LTE_HFA_ENODEB_CCAS_QUERY($errtable)
+					#if($velocityCount < $TECH_PACK_LIST.getAllRawTables().size())
+							union all
+					#end
+				#end
+			) as err
+		group by
+			CAUSE_CODE,
+			EVENT_ID
+	) as events
+inner join
+	dc.DIM_E_LTE_HFA_CAUSE_CODE ccref
+on
+	(ccref.EVENT_ID = events.EVENT_ID
+	and ccref.CAUSE_CODE = events.CAUSE_CODE )
+order by
+	CAUSE_CODE	

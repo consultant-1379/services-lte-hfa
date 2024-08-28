@@ -1,0 +1,59 @@
+##
+## Author : EVARAKS
+## LTE Handover Failure Terminal group Handover stage Summary Analysis (Aggregation)
+##
+## Velocity Parameter:
+##
+## Named PreparedStatement Parameter:
+##
+##     :dateFrom   starting time
+##     :dateTo     ending time
+##
+#set($columnsToSelect=["CATEGORY_ID_2", "IMSI"])
+#set($groupTable="dc.GROUP_TYPE_E_TAC")
+#set($groupnameColumn="GROUP_NAME")
+#set($joinKeys=["TAC"])
+
+SELECT
+    '${groupname}' as 'Group Name',
+    aggView.CATEGORY_ID_2 AS 'Category ID',
+    eventDesc.CATEGORY_ID_2_DESC as 'Category Type',
+    Failures as 'Failures',
+    subscribers.IMPACTED_SUBSCRIBERS as 'Impacted Subscribers'
+FROM
+    (select
+        CATEGORY_ID_2,
+        sum(NO_OF_ERRORS)
+    from
+        $aggregationView as tempAgg,
+        dc.GROUP_TYPE_E_TAC terminalGroup
+    where
+        terminalGroup.GROUP_NAME = :groupname
+        and terminalGroup.TAC = tempAgg.TAC
+        and #GET_DATETIME_RANGE()
+    group by
+        CATEGORY_ID_2
+    ) as aggView(CATEGORY_ID_2, Failures)
+    left outer join
+    (
+        select
+            count(distinct rawview.IMSI),
+            CATEGORY_ID_2
+        from
+            #if ($timerange == "TR_4")
+            #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_SPECIFY_COLUMNS_GROUPS_WEEK($TECH_PACK_LIST.getAllRawTables() "rawview" $columnsToSelect)
+            #else
+            #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_SPECIFY_COLUMNS_GROUPS($TECH_PACK_LIST.getAllRawTables() "rawview" $columnsToSelect)
+            #end
+        group by
+            CATEGORY_ID_2
+        ) as subscribers(IMPACTED_SUBSCRIBERS, CATEGORY_ID_2)
+    on (
+        aggView.CATEGORY_ID_2 = subscribers.CATEGORY_ID_2
+        )
+    inner join (
+        select distinct    CATEGORY_ID_2,CATEGORY_ID_2_DESC
+        from DIM_E_LTE_HFA_EVENTTYPE) eventDesc
+        on (
+         eventDesc.CATEGORY_ID_2 = aggView.CATEGORY_ID_2
+)

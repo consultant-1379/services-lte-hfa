@@ -1,0 +1,89 @@
+##
+## LTE Handover Failure eNodeB Group Event Volume Analysis (using aggregation tables)
+##
+## Velocity Parameter:
+##
+## Named PreparedStatement Parameter:
+##       $starttime     start time
+##     $endtime     end time
+##    $interval     interval for different timerange
+##   :dateFrom     starting time
+##   :dateTo   ending time
+##
+#set($columnsToSelectforImpactedIMSI=["DATETIME_ID", "IMSI"])
+#set($groupTable="GROUP_TYPE_E_RAT_VEND_HIER3")
+#set($groupnameColumn="GROUP_NAME")
+#set($joinKeys=["HIER3_ID"])
+
+#DEFINE_CONSTANTS()
+
+begin
+
+select
+     dateformat(err.TS, 'yyyy-mm-dd hh:mm:ss.S') as 'TIME',
+    isnull(sum (case when err.EVENT_ID = 4111 then isnull(err.NO_OF_ERRORS, 0) end),0) as INTERNAL_PROC_HO_PREP_X2_IN,
+    isnull(sum (case when err.EVENT_ID = 4110 then isnull(err.NO_OF_ERRORS, 0) end),0) as INTERNAL_PROC_HO_PREP_X2_OUT,
+    isnull(sum (case when err.EVENT_ID = 4113 then isnull(err.NO_OF_ERRORS, 0) end),0) as INTERNAL_PROC_HO_EXEC_X2_IN,
+    isnull(sum (case when err.EVENT_ID = 4112 then isnull(err.NO_OF_ERRORS, 0) end),0) as INTERNAL_PROC_HO_EXEC_X2_OUT,
+    isnull(sum (case when err.EVENT_ID = 4103 then isnull(err.NO_OF_ERRORS, 0) end),0) as INTERNAL_PROC_HO_PREP_S1_IN,
+    isnull(sum (case when err.EVENT_ID = 4102 then isnull(err.NO_OF_ERRORS, 0) end),0) as INTERNAL_PROC_HO_PREP_S1_OUT,
+    isnull(sum (case when err.EVENT_ID = 4105 then isnull(err.NO_OF_ERRORS, 0) end),0) as INTERNAL_PROC_HO_EXEC_S1_IN,
+    isnull(sum (case when err.EVENT_ID = 4104 then isnull(err.NO_OF_ERRORS, 0) end),0) as INTERNAL_PROC_HO_EXEC_S1_OUT,
+    isnull(max(sub.IMPACTED_SUBSCRIBERS), 0) as 'Impacted Subscribers'
+
+from
+  (
+    select
+    tmp_st,
+    EVENT_ID,
+    isnull(sum(NO_OF_ERRORS), 0) as NO_OF_ERRORS
+    from
+    (
+  select
+        DATETIME_ID,
+        EVENT_ID,
+        NO_OF_ERRORS
+  from
+        $aggregationView as aggView,
+        $groupTable temp_group
+  where
+        #GET_DATETIME_RANGE()
+        and temp_group.HIER3_ID = aggView.HIER3_ID
+        and temp_group.GROUP_NAME = :groupname
+    ) as rawview
+    ,#GET_CHART_TIMES($starttime $endtime $interval)
+    where
+    DATETIME_ID >= tmp_st
+    and DATETIME_ID < tmp_et
+    group by
+    tmp_st,
+    EVENT_ID
+  ) as err ( TS, EVENT_ID, NO_OF_ERRORS)
+  full outer join
+  (
+    select
+    tmp_st,
+    count(distinct(IMSI))
+    from
+    #if($timerange == "TR_4")
+    #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_WITH_TAC_EXCLUSION_SPECIFY_COLUMNS_GROUPS_WEEK($TECH_PACK_LIST.getAllRawTables() "sub" $columnsToSelectforImpactedIMSI)
+    #else
+    #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_WITH_TAC_EXCLUSION_SPECIFY_COLUMNS_GROUPS($TECH_PACK_LIST.getAllRawTables() "sub" $columnsToSelectforImpactedIMSI)
+    #end
+    ,#GET_CHART_TIMES($starttime $endtime $interval)
+    where
+    DATETIME_ID >= tmp_st
+    and DATETIME_ID < tmp_et
+    group by
+    tmp_st
+  ) as sub(TS, IMPACTED_SUBSCRIBERS)
+  on
+    err.TS = sub.TS
+where
+  dateformat(err.TS, 'yyyy-mm-dd hh:mm:ss.S') is not null
+group by
+  dateformat(err.TS, 'yyyy-mm-dd hh:mm:ss.S')
+order by
+  dateformat(err.TS, 'yyyy-mm-dd hh:mm:ss.S')
+
+end

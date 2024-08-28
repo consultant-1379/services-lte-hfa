@@ -1,0 +1,72 @@
+##
+## Author : EVIJRED
+## LTE Handover Failure eNodeB Event Volume Analysis (using raw tables)
+##
+## Velocity Parameter: 
+##		
+## Named PreparedStatement Parameter:
+##	   	$starttime 		start time
+## 		$endtime 		end time
+##		$interval 		interval for different timerange
+##     	:dateFrom   	starting time
+##     	:dateTo     	ending time
+##
+#set($columnsToSelect=["DATETIME_ID", "EVENT_ID", "IMSI"])
+#set($columnsToSelectforImpactedIMSI=["DATETIME_ID", "IMSI"])
+#set($notNullColumns=["EVENT_ID"])
+#set($condictionColumns=["HIER3_ID"])
+
+#DEFINE_CONSTANTS()
+
+begin
+
+select
+	dateformat(err.TS, 'yyyy-mm-dd hh:mm:ss.S') as 'TIME',
+	isnull(sum (case when err.EVENT_ID = 4111 then isnull(err.NO_OF_ERRORS, 0) end),0) as INTERNAL_PROC_HO_PREP_X2_IN,       
+    isnull(sum (case when err.EVENT_ID = 4110 then isnull(err.NO_OF_ERRORS, 0) end),0) as INTERNAL_PROC_HO_PREP_X2_OUT,    
+    isnull(sum (case when err.EVENT_ID = 4113 then isnull(err.NO_OF_ERRORS, 0) end),0) as INTERNAL_PROC_HO_EXEC_X2_IN,    
+    isnull(sum (case when err.EVENT_ID = 4112 then isnull(err.NO_OF_ERRORS, 0) end),0) as INTERNAL_PROC_HO_EXEC_X2_OUT,    
+    isnull(sum (case when err.EVENT_ID = 4103 then isnull(err.NO_OF_ERRORS, 0) end),0) as INTERNAL_PROC_HO_PREP_S1_IN,
+    isnull(sum (case when err.EVENT_ID = 4102 then isnull(err.NO_OF_ERRORS, 0) end),0) as INTERNAL_PROC_HO_PREP_S1_OUT, 
+    isnull(sum (case when err.EVENT_ID = 4105 then isnull(err.NO_OF_ERRORS, 0) end),0) as INTERNAL_PROC_HO_EXEC_S1_IN,
+    isnull(sum (case when err.EVENT_ID = 4104 then isnull(err.NO_OF_ERRORS, 0) end),0) as INTERNAL_PROC_HO_EXEC_S1_OUT,
+	isnull(max(sub.IMPACTED_SUBSCRIBERS), 0) as 'Impacted Subscribers'
+	
+from
+	(
+		select
+			tmp_st,
+			EVENT_ID,
+			isnull(count(*), 0) as NO_OF_ERRORS
+		from
+			#REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_WITH_TAC_EXCLUSION_SPECIFY_COLUMNS_AND_NOT_NULL_COLUMNS($TECH_PACK_LIST.getAllRawTables() "err" $condictionColumns $columnsToSelect $notNullColumns)
+			,#GET_CHART_TIMES($starttime $endtime $interval)
+		where        
+			DATETIME_ID >= tmp_st
+			and DATETIME_ID < tmp_et
+		group by
+			tmp_st,
+			EVENT_ID
+	) as err ( TS, EVENT_ID, NO_OF_ERRORS)
+	full outer join
+	(
+		select
+			tmp_st,
+			count(distinct(IMSI))
+		from
+			#REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_WITH_TAC_EXCLUSION_SPECIFY_COLUMNS_AND_NOT_NULL_COLUMNS($TECH_PACK_LIST.getAllRawTables() "sub" $condictionColumns $columnsToSelectforImpactedIMSI $notNullColumns)
+			,#GET_CHART_TIMES($starttime $endtime $interval)
+		where
+			DATETIME_ID >= tmp_st
+			and DATETIME_ID < tmp_et
+		group by
+			tmp_st
+	) as sub(TS, IMPACTED_SUBSCRIBERS)
+	on
+		err.TS = sub.TS
+group by
+	dateformat(err.TS, 'yyyy-mm-dd hh:mm:ss.S')
+order by
+	dateformat(err.TS, 'yyyy-mm-dd hh:mm:ss.S')
+	
+end

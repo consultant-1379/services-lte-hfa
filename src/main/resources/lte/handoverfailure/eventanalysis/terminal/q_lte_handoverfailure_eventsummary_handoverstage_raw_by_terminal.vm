@@ -1,0 +1,119 @@
+##
+
+
+## LTE Handover Failure Terminal Handover stage Summary Analysis (Raw)
+
+##
+
+## Velocity Parameter:
+
+##
+
+## Named PreparedStatement Parameter:
+
+##
+
+##     :dateFrom   starting time
+
+##     :dateTo     ending time
+
+##
+
+
+
+#set($conditionColumns=["TAC"])
+
+#set($columnsToSelect=["CATEGORY_ID_2", "IMSI"])
+
+
+
+SELECT
+
+    data.CATEGORY_ID_2 AS 'Category ID',
+
+    :TAC as 'TAC',
+
+    case when (TAC != null AND  TAC != 0 ) then isnull(topology.VENDOR_NAME,'Manufacturer Unknown')
+         when (TAC = 0 ) then isnull(topology.VENDOR_NAME,'Manufacturer Invalid')
+         else null end as 'Terminal Make',
+
+    case when (TAC != null AND  TAC != 0 ) then isnull (topology.MARKETING_NAME,'Model Unknown')
+         when (TAC = 0 ) then isnull (topology.MARKETING_NAME,'Model Invalid')
+         else null end as 'Terminal Model',
+
+    handoverStageDesc.CATEGORY_ID_2_DESC as 'Handover Stage',
+
+    FAILURES as 'Failures',
+
+    IMPACTED_SUBSCRIBERS as 'Impacted Subscribers'
+
+FROM
+
+    (
+
+        select
+
+            count (*),
+
+            :TAC,
+
+            CATEGORY_ID_2,
+
+            count (distinct rawview.IMSI)
+
+        from
+
+            #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_SPECIFY_COLUMNS($TECH_PACK_LIST.getAllRawTables() "rawview" $conditionColumns $columnsToSelect)
+
+        group by
+
+            CATEGORY_ID_2
+
+    ) as data(FAILURES, TAC, CATEGORY_ID_2, IMPACTED_SUBSCRIBERS)
+
+    left outer join
+
+    (
+
+         select
+
+             topo.TAC,
+
+            topo.VENDOR_NAME,
+
+            topo.MARKETING_NAME
+
+        from
+
+            topo.dc.DIM_E_SGEH_TAC topo
+
+        where
+
+            topo.TAC = :TAC
+
+    )    as topology
+
+    on(
+
+        topology.TAC = data.TAC
+
+    )
+
+
+        inner join
+        (
+
+        select distinct
+
+        CATEGORY_ID_2,CATEGORY_ID_2_DESC
+
+        from
+
+        DIM_E_LTE_HFA_EVENTTYPE
+        ) handoverStageDesc
+
+    on(
+
+        handoverStageDesc.CATEGORY_ID_2 = data.CATEGORY_ID_2
+
+      )

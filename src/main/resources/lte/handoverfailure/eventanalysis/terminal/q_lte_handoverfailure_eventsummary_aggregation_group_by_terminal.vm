@@ -1,0 +1,63 @@
+##
+## LTE Handover Failure Analysis Terminal Event Analysis (using aggregation tables)
+##
+## Velocity Parameter:
+##    
+##        $aggregationView the aggregation view to query against
+##
+##
+## Named PreparedStatement Parameter:
+##
+##     :dateFrom   starting time
+##     :dateTo     ending time#
+
+#set($columnsToSelect=["EVENT_ID", "IMSI"])
+#set($conditionColumns=["CATEGORY_ID_2"])
+#set($groupTable="dc.GROUP_TYPE_E_TAC")
+#set($groupnameColumn="GROUP_NAME")
+#set($joinKeys=["TAC"])
+
+SELECT
+    '${groupname}' as 'Group Name',
+    eventDesc.EVENT_ID_DESC as 'Event Type',
+    aggView.EVENT_ID AS 'Event ID',
+    Failures as 'Failures',
+    subscribers.IMPACTED_SUBSCRIBERS as 'Impacted Subscribers'
+FROM
+    (select
+        EVENT_ID,
+        sum(NO_OF_ERRORS)
+    from
+        $aggregationView as tempAgg
+        ,dc.GROUP_TYPE_E_TAC terminalGroup
+    where
+        terminalGroup.GROUP_NAME = :groupname and
+        terminalGroup.TAC = tempAgg.TAC and
+        tempAgg.CATEGORY_ID_2 = :CATEGORY_ID_2 and
+        #GET_DATETIME_RANGE()
+    group by
+        EVENT_ID
+    ) as aggView(EVENT_ID, Failures)
+    left outer join
+    (
+        select
+            count(distinct rawview.IMSI),
+            EVENT_ID
+        from
+            #if ($timerange == "TR_4")
+            #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_CONDITION_COLUMNS_GROUPS_WEEK($TECH_PACK_LIST.getAllRawTables() "rawview" $conditionColumns $columnsToSelect)
+            #else
+            #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_CONDITION_COLUMNS_GROUPS($TECH_PACK_LIST.getAllRawTables() "rawview" $conditionColumns $columnsToSelect)
+            #end
+        group by
+            EVENT_ID
+        ) as subscribers(IMPACTED_SUBSCRIBERS, EVENT_ID)
+    on (
+        aggView.EVENT_ID = subscribers.EVENT_ID
+        )
+    inner join
+        dc.DIM_E_LTE_HFA_EVENTTYPE eventDesc
+    on(
+        eventDesc.EVENT_ID = isnull(aggView.EVENT_ID,subscribers.EVENT_ID)
+        and eventDesc.CATEGORY_ID_2= :CATEGORY_ID_2
+    )

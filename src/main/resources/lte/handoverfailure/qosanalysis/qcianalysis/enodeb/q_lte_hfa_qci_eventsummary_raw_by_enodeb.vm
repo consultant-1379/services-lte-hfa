@@ -1,0 +1,60 @@
+##
+## Author : Jegan
+## LTE HFA QOS QCI eNodeB Event Summary Analysis (using raw tables)
+##
+## Velocity Parameter: 
+##		
+## Named PreparedStatement Parameter:
+##
+##     :dateFrom   starting time
+##     :dateTo     ending time
+##
+
+#set($conditionColumns=["HIER3_ID", "QCI_ID", "CATEGORY_ID_2"])
+#set($columnsToSelect=[ "QCI_ID", "CATEGORY_ID_2", "IMSI", "EVENT_ID"])
+
+SELECT
+	#if($count > 0)
+	  top $count
+	#end
+	:HIER3_ID as HIER3_ID,
+	:QCI_ID as QCI_ID,
+	data_table.EVENT_ID as EVENT_ID,
+	DIM_E_LTE_HFA_EVENTTYPE.EVENT_ID_DESC as 'Event Type',
+	data_table.FAILURES as Failures,
+	data_table.IMPACTED_SUBSCRIBERS as 'Impacted Subscribers',
+	:NODE as NODE
+FROM
+	(	
+		select 
+			count (*) as FAILURES,
+			:HIER3_ID as HIER3_ID,
+			:QCI_ID as QCI_ID,
+			EVENT_ID,
+			count (distinct rawview.IMSI) as IMPACTED_SUBSCRIBERS
+		from
+			#REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_WITH_TAC_EXCLUSION_SPECIFY_COLUMNS($TECH_PACK_LIST.getAllRawTablesWithMeasurementType() "rawview" $conditionColumns $columnsToSelect)
+		group by
+			EVENT_ID
+	) as data_table
+left outer join
+	DIM_E_LTE_HFA_EVENTTYPE
+on
+	DIM_E_LTE_HFA_EVENTTYPE.EVENT_ID = data_table.EVENT_ID
+left outer join (
+		select  
+			:HIERARCHY_3 AS HIERARCHY_3,
+			:HIER3_ID as HIER3_ID,
+			VENDOR
+		from 
+			DIM_E_LTE_HIER321
+		where 
+			HIER3_ID = :HIER3_ID
+			and HIERARCHY_3=:HIERARCHY_3
+			GROUP BY HIERARCHY_3,
+			HIER3_ID,
+			VENDOR
+	) as topology
+	on (
+		topology.HIER3_ID = data_table.HIER3_ID
+		)

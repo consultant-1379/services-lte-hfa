@@ -1,0 +1,70 @@
+
+## NOTE - Need to create GET_LTE_HFA_CAUSE_CODE_PIE_CHART_CAUSE_CODE_WHERE_LIST macro in VM_QUERY_MACROS.VM!!!
+
+#macro(LTE_HFA_ECELL_GROUP_CC_ANALYSIS_QUERY $errTable)
+    select
+        errTable.CAUSE_CODE as CAUSE_CODE,
+        count(*),
+        IMSI,
+        errTable.EVENT_ID as EVENT_ID
+    from
+        dc.${errTable} as errTable,
+        dc.GROUP_TYPE_E_RAT_VEND_HIER321 groupTable
+    where
+        errTable.HIER321_ID = groupTable.HIER321_ID
+        and groupTable.GROUP_NAME = :groupname
+        #if ($timerange == "TR_4")
+            and #GET_DATE_RANGE_LOCAL()
+        #else
+            and #GET_DATETIME_RANGE()
+        #end 
+        and #GET_TAC_EXCLUSION()
+        and #GET_LTE_HFA_CAUSE_CODE_PIE_CHART_CAUSE_CODE_WHERE_LIST ("errTable" $causeCodeData)
+        and CAUSE_CODE is not null
+        and EVENT_ID is not null
+    group by
+        IMSI,
+        CAUSE_CODE,
+        EVENT_ID
+#end
+
+select
+    events.CAUSE_CODE as CAUSE_CODE,
+    ccref.CAUSE_CODE_DESC_PIE as 'Cause Code Description',
+    events.NO_OF_ERRORS,
+    events.TOTAL_NO_OF_SUBSCRIBERS,
+    events.EVENT_ID as EVENT_ID,
+    eventDesc.EVENT_ID_DESC as EVENT_ID_DESC,
+    NULL as NODE,
+    :groupname as 'Group Name'
+from
+    (
+        select
+            err.CAUSE_CODE as CAUSE_CODE,
+            sum(isnull(err.NO_OF_ERRORS, 0)) as NO_OF_ERRORS,
+            count(distinct(IMSI)) as TOTAL_NO_OF_SUBSCRIBERS,
+            err.EVENT_ID as EVENT_ID
+        from 
+        (
+            #foreach ($errtable in $TECH_PACK_LIST.getAllRawTables())
+                #LTE_HFA_ECELL_GROUP_CC_ANALYSIS_QUERY($errtable)
+                #if($velocityCount < $TECH_PACK_LIST.getAllRawTables().size())
+                        union all
+                #end
+            #end
+        ) as err (CAUSE_CODE, NO_OF_ERRORS, IMSI, EVENT_ID)
+        group by
+            err.CAUSE_CODE,
+            err.EVENT_ID
+    ) as events
+inner join
+    dc.DIM_E_LTE_HFA_CAUSE_CODE ccref
+on
+    (ccref.EVENT_ID = events.EVENT_ID
+    and ccref.CAUSE_CODE = events.CAUSE_CODE )
+inner join
+    dc.DIM_E_LTE_HFA_EVENTTYPE eventDesc
+on
+    (eventDesc.EVENT_ID = events.EVENT_ID )
+order by
+    events.CAUSE_CODE

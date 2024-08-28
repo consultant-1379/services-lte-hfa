@@ -1,0 +1,105 @@
+##
+## Author : EVARAKS
+## LTE Handover Failure Subscriber Analysis ERAB Drilldown
+##
+## Velocity Parameter:
+##
+## Named PreparedStatement Parameter:
+##
+##    :IMSI
+##    :HIER321_ID
+##    :HIER3_ID
+##    :EVENT_TIME
+##    :EVENT_ID
+##
+
+#set($conditionColumns=["EVENT_ID","EVENT_TIME","IMSI", "TAC", "HIER3_ID", "HIER321_ID"])
+#set($columnsToFilter=["EVENT_TIME","TAC","EVENT_ID","HIER3_ID", "HIER321_ID","HO_IN_PREP_ERAB_REQ","HO_IN_PREP_ERAB_RESULT","SETUP_REQ_ARP", "SETUP_REQ_PCI","SETUP_REQ_PVI","THIER3_ID","THIER321_ID","QCI_ID"])
+#set($columnsToSelect=["HO_IN_PREP_ERAB_REQ","SETUP_REQ_ARP"])
+
+SELECT
+    #if($count > 0)
+      top $count
+    #end
+    #if($csv == true)
+             DATEADD(minute,$tzOffset,rawview.EVENT_TIME)AS 'Event Time',
+           #else
+             rawview.EVENT_TIME AS 'Event Time',
+           #end
+
+    $imsi AS IMSI,
+    $TAC AS TAC,
+    case when ($TAC != null AND  $TAC != 0 ) then isnull(DIM_E_SGEH_TAC.VENDOR_NAME,'Manufacturer Unknown') 
+         when ($TAC = 0) then isnull(DIM_E_SGEH_TAC.VENDOR_NAME,'Manufacturer Invalid') 
+         else null end AS 'Terminal Make' ,
+    case when ($TAC != null AND  $TAC != 0 ) then isnull(DIM_E_SGEH_TAC.MARKETING_NAME,'Model Unknown')
+         when ($TAC = 0) then isnull(DIM_E_SGEH_TAC.MARKETING_NAME,'Model Invalid')
+         else null end AS 'Terminal Model' ,
+    $eventID as 'EVENT_ID',
+    DIM_E_LTE_HFA_EVENTTYPE.EVENT_ID_DESC as 'Event Type' ,
+    sourceTopology.HIERARCHY_3 as 'Source Controller' ,
+    sourceTopology.HIERARCHY_1 as 'Source Access Area' ,
+    targetTopology.HIERARCHY_3 as 'Target Controller' ,
+    targetTopology.HIERARCHY_1 as 'Target Access Area' ,
+    sourceTopology.VENDOR as 'RAN Vendor' ,
+    DIM_E_LTE_HFA_ERAB_SETUP_REQ_PCI.SETUP_REQ_PCI_DESC as 'Setup Request PCI',
+    DIM_E_LTE_HFA_ERAB_SETUP_REQ_PVI.SETUP_REQ_PVI_DESC as 'Setup Request PVI',
+    DIM_E_LTE_HFA_CAUSE_CODE.CAUSE_CODE_DESC as 'HO Prep ERAB Result',
+    #GET_COLUMNS_BY_TABLE_NO_COMMA_TRAILING("rawview" $columnsToSelect)
+    ,DIM_E_LTE_QCI.QCI_ID_DESCRIPTION
+FROM
+    #if($timerange == "TR_4")
+    #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_WITH_TAC_EXCLUSION_SPECIFY_COLUMNS_WEEK($TECH_PACK_LIST.getAllRawTablesWithMeasurementType()  "rawview" $conditionColumns $columnsToFilter),
+    #else
+    #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_WITH_TAC_EXCLUSION_SPECIFY_COLUMNS($TECH_PACK_LIST.getAllRawTablesWithMeasurementType()  "rawview" $conditionColumns $columnsToFilter),
+    #end
+    DIM_E_LTE_HFA_EVENTTYPE,
+    DIM_E_LTE_HFA_ERAB_SETUP_REQ_PCI,
+    DIM_E_LTE_HFA_ERAB_SETUP_REQ_PVI,
+    (
+        SELECT
+            HIERARCHY_1,
+            HIERARCHY_3,
+            CAST(:HIER3_ID AS bigint) as HIER3ID,
+            CAST(:HIER321_ID AS bigint) AS HIER321ID,
+            VENDOR
+        FROM
+            DIM_E_LTE_HIER321
+        WHERE
+            HIER3_ID= :HIER3_ID
+        AND HIER321_ID = :HIER321_ID
+        GROUP BY HIERARCHY_1,
+            HIERARCHY_3,
+            HIER3ID,
+            HIER321ID,
+            VENDOR
+    )  AS sourceTopology,
+    (
+        SELECT
+            HIERARCHY_1,
+            HIERARCHY_3,
+            HIER3_ID,
+            HIER321_ID
+        FROM
+            DIM_E_LTE_HIER321
+            GROUP BY  HIERARCHY_1,
+            HIERARCHY_3,
+            HIER3_ID,
+            HIER321_ID
+    ) AS targetTopology,
+    DIM_E_SGEH_TAC,
+    DIM_E_LTE_HFA_CAUSE_CODE,
+    DIM_E_LTE_QCI
+where
+    DIM_E_LTE_HFA_EVENTTYPE.EVENT_ID = :eventID
+    and rawview.SETUP_REQ_PCI *= DIM_E_LTE_HFA_ERAB_SETUP_REQ_PCI.SETUP_REQ_PCI
+    and rawview.SETUP_REQ_PVI *= DIM_E_LTE_HFA_ERAB_SETUP_REQ_PVI.SETUP_REQ_PVI
+    and rawview.HIER3_ID *= sourceTopology.HIER3ID
+    and rawview.HIER321_ID *= sourceTopology.HIER321ID
+    and rawview.THIER3_ID *= targetTopology.HIER3_ID
+    and rawview.THIER321_ID *= targetTopology.HIER321_ID
+    and rawview.TAC *= DIM_E_SGEH_TAC.TAC
+    and DIM_E_LTE_HFA_CAUSE_CODE.EVENT_ID= :eventID
+    and rawview.HO_IN_PREP_ERAB_RESULT *= DIM_E_LTE_HFA_CAUSE_CODE.CAUSE_CODE
+    and rawview.QCI_ID *= DIM_E_LTE_QCI.QCI_NUMBER
+

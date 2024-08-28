@@ -1,0 +1,60 @@
+##
+## LTE Handover Failure Analysis eCell Event Analysis (using raw tables)
+##
+##
+## Named PreparedStatement Parameter:
+##
+##     :dateFrom   starting time
+##     :dateTo     ending time#
+
+
+#set($conditionColumns=["HIER321_ID"])
+#set($columnsToSelect=["CATEGORY_ID_2", "IMSI"])
+
+SELECT 
+	:HIER321_ID	AS HIER321_ID,
+	topology.VENDOR AS 'RAN Vendor',
+	topology.HIERARCHY_3 AS 'Controller',
+	topology.HIERARCHY_1 AS 'Access Area',
+	handoverStageDesc.CATEGORY_ID_2_DESC AS 'Handover Stage',
+	data.CATEGORY_ID_2 AS 'Category_Id_2',
+	FAILURES AS 'Failures',
+	IMPACTED_SUBSCRIBERS AS 'Impacted Subscribers'
+FROM 	
+	(	
+		select 
+			count (*),
+			:HIER321_ID	AS HIER321_ID,			
+			CATEGORY_ID_2,
+			count (distinct rawview.IMSI)
+		from 
+			#REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_WITH_TAC_EXCLUSION_SPECIFY_COLUMNS($TECH_PACK_LIST.getAllRawTables() "rawview" $conditionColumns $columnsToSelect)
+		group by
+			CATEGORY_ID_2
+	) as data(FAILURES, HIER321_ID, CATEGORY_ID_2, IMPACTED_SUBSCRIBERS)
+	join	(
+		select distinct 
+		CATEGORY_ID_2,CATEGORY_ID_2_DESC 
+		from
+		DIM_E_LTE_HFA_EVENTTYPE) handoverStageDesc 
+	on(
+		handoverStageDesc.CATEGORY_ID_2 = data.CATEGORY_ID_2
+	  )
+	left outer join 
+(	
+		select
+			HIERARCHY_1,
+			HIERARCHY_3,
+			HIER321_ID,
+			VENDOR
+		from 
+			DIM_E_LTE_HIER321
+		where HIER321_ID = :HIER321_ID	
+				GROUP BY HIERARCHY_1,
+			HIERARCHY_3,
+			HIER321_ID,
+			VENDOR
+	) as topology	
+	 on (
+	 data.HIER321_ID = topology.HIER321_ID
+	 )		

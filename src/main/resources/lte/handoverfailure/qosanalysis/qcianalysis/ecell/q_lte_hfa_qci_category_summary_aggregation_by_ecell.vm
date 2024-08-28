@@ -1,0 +1,88 @@
+##
+## LTE Handover Failure QOS QCI eCell Category Summary Analysis (using aggregation tables)
+##
+## Velocity Parameter:
+##
+## Named PreparedStatement Parameter:
+##
+##     :dateFrom   starting time
+##     :dateTo     ending time
+##
+#set($conditionColumns=["HIER321_ID"])
+#set($columnsToSelect=[ "QCI_ID", "CATEGORY_ID_2", "IMSI"])
+#set($columnsToIncludeInNewView=["QCI_ID", "CATEGORY_ID_2", "HIER321_ID"])
+
+SELECT
+    #if($count > 0)
+      top $count
+    #end
+    :HIER321_ID as HIER321_ID,
+    aggView.QCI_ID as QCI_ID,
+    DIM_E_LTE_QCI.QCI_ID_DESCRIPTION as 'QCI Description',
+    aggView.CATEGORY_ID_2 as CATEGORY_ID_2,
+    eventDesc.CATEGORY_ID_2_DESC,
+    aggView.NO_OF_ERRORS as Failures,
+    subscribers.IMPACTED_SUBSCRIBERS as 'Impacted Subscribers',
+    topology.HIERARCHY_1 as 'Access Area',
+    topology.HIERARCHY_3 AS 'Controller',
+    topology.VENDOR AS 'RAN Vendor',
+    :NODE AS 'NODE'
+FROM
+    #UNION_ALL_AGGREGATION_VIEWS_WITH_SPECIFIC_COLUMNS_POST_AGGREGATE_WITH_CONDITION($aggregationViewList "aggView" $columnsToIncludeInNewView "NO_OF_ERRORS" $conditionColumns)
+left outer join
+    (
+        select
+            count(distinct rawview.IMSI) as IMPACTED_SUBSCRIBERS,
+            :HIER321_ID as HIER321_ID,
+            QCI_ID,
+            CATEGORY_ID_2
+        from
+            #if ($timerange == "TR_4")
+            #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_WITH_TAC_EXCLUSION_SPECIFY_COLUMNS_WEEK($TECH_PACK_LIST.getAllRawTablesWithMeasurementType() "rawview" $conditionColumns $columnsToSelect)
+            #else
+            #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_WITH_TAC_EXCLUSION_SPECIFY_COLUMNS($TECH_PACK_LIST.getAllRawTablesWithMeasurementType() "rawview" $conditionColumns $columnsToSelect)
+            #end
+        group by
+            QCI_ID,
+            CATEGORY_ID_2
+    ) as subscribers
+on
+    (aggView.CATEGORY_ID_2 = subscribers.CATEGORY_ID_2 and aggView.QCI_ID = subscribers.QCI_ID)
+join
+    DIM_E_LTE_QCI
+on 
+    DIM_E_LTE_QCI.QCI_NUMBER = aggView.QCI_ID
+left outer join
+    (
+         select 
+            CATEGORY_ID_2,
+            CATEGORY_ID_2_DESC
+        from 
+            dc.DIM_E_LTE_HFA_EVENTTYPE
+        group by
+            CATEGORY_ID_2,
+            CATEGORY_ID_2_DESC
+     )    as eventDesc
+on
+    eventDesc.CATEGORY_ID_2 = isnull(aggView.CATEGORY_ID_2,subscribers.CATEGORY_ID_2)
+left outer join (
+        select
+            HIERARCHY_1,
+            HIERARCHY_3,
+            HIER321_ID,
+            VENDOR
+        from 
+            DIM_E_LTE_HIER321
+        where
+            HIER321_ID = :HIER321_ID
+            and HIERARCHY_1=:HIERARCHY_1
+        group by
+            HIERARCHY_1,
+            HIERARCHY_3,
+            HIER321_ID,
+            VENDOR
+    ) as topology
+    on (
+        topology.HIER321_ID = isnull(aggView.HIER321_ID,subscribers.HIER321_ID)
+        )
+order by aggView.QCI_ID, aggView.CATEGORY_ID_2

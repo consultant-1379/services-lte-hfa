@@ -1,0 +1,48 @@
+#set($conditionColumns=["HIER321_ID", "CATEGORY_ID_2"])
+#set($columnsToSelect=["EVENT_ID", "IMSI"])
+
+SELECT 
+	:HIER321_ID	AS	HIER321_ID,
+	topology.VENDOR AS 'Vendor',
+	topology.HIERARCHY_3 AS 'Controller',
+	topology.HIERARCHY_1 AS 'Access Area',
+	eventDesc.EVENT_ID_DESC as 'Event Type',
+	data.EVENT_ID AS 'Event ID',
+	FAILURES AS 'Failures',
+	IMPACTED_SUBSCRIBERS AS 'Impacted Subscribers'
+FROM 	
+	(	
+		select 
+			count (*),
+			:HIER321_ID	AS	HIER321_ID,
+			EVENT_ID,
+			count (distinct rawview.IMSI)
+		from 
+			#REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_WITH_TAC_EXCLUSION_SPECIFY_COLUMNS($TECH_PACK_LIST.getAllRawTables() "rawview" $conditionColumns $columnsToSelect)
+		group by
+			EVENT_ID
+	) as data(FAILURES,HIER321_ID,EVENT_ID, IMPACTED_SUBSCRIBERS)
+	join	
+		DIM_E_LTE_HFA_EVENTTYPE eventDesc
+	on(
+		eventDesc.EVENT_ID = data.EVENT_ID
+	)
+LEFT OUTER JOIN
+(	
+		select 
+			HIERARCHY_1,
+			HIERARCHY_3,
+			HIER321_ID,
+			VENDOR
+		from 
+			DIM_E_LTE_HIER321
+		where HIER321_ID = :HIER321_ID
+		GROUP BY HIERARCHY_1,
+			HIERARCHY_3,
+			HIER321_ID,
+			VENDOR
+	) as topology
+	ON
+	(
+		 data.HIER321_ID = topology.HIER321_ID
+	)	

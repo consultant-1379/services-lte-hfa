@@ -1,0 +1,67 @@
+##
+## LTE HFA Failure QOS QCI eCell Group Category Summary Analysis (using aggregation tables)
+##
+## Velocity Parameter:
+##
+## Named PreparedStatement Parameter:
+##
+##     :dateFrom   starting time
+##     :dateTo     ending time
+##
+#set($columnsToSelect=["HIER321_ID", "QCI_ID", "CATEGORY_ID_2", "IMSI"])
+#set($columnsToIncludeInNewView=["QCI_ID", "CATEGORY_ID_2"])
+#set($groupTable="GROUP_TYPE_E_RAT_VEND_HIER321")
+#set($groupnameColumn="GROUP_NAME")
+#set($joinKeys=["HIER321_ID"])
+SELECT
+    #if($count > 0)
+      top $count
+    #end
+    '${groupname}' as 'Group Name',
+    aggView.QCI_ID as QCI_ID,
+    DIM_E_LTE_QCI.QCI_ID_DESCRIPTION as 'QCI Description',
+    aggView.CATEGORY_ID_2 as CATEGORY_ID_2,
+    eventDesc.CATEGORY_ID_2_DESC,
+    aggView.NO_OF_ERRORS as Failures,
+    subscribers.IMPACTED_SUBSCRIBERS as 'Impacted Subscribers'
+FROM
+    #UNION_ALL_AGGREGATION_VIEWS_WITH_SPECIFIC_COLUMNS_POST_AGGREGATE_GROUPS($aggregationViewList "aggView" $columnsToIncludeInNewView "NO_OF_ERRORS")
+left outer join
+    (
+        select
+            count(distinct rawview.IMSI) as IMPACTED_SUBSCRIBERS,
+            QCI_ID,
+            CATEGORY_ID_2
+        from
+            #if ($timerange == "TR_4")
+                #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_WITH_TAC_EXCLUSION_SPECIFY_COLUMNS_GROUPS_WEEK($TECH_PACK_LIST.getAllRawTablesWithMeasurementType() "rawview" $columnsToSelect)
+            #else
+                #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_WITH_TAC_EXCLUSION_SPECIFY_COLUMNS_GROUPS($TECH_PACK_LIST.getAllRawTablesWithMeasurementType() "rawview" $columnsToSelect)
+            #end
+        group by
+            QCI_ID,
+            CATEGORY_ID_2
+    ) as subscribers
+on
+    (
+        aggView.CATEGORY_ID_2 = subscribers.CATEGORY_ID_2
+        and aggView.QCI_ID = subscribers.QCI_ID 
+    )
+ join
+    DIM_E_LTE_QCI
+on 
+    DIM_E_LTE_QCI.QCI_NUMBER = aggView.QCI_ID
+left outer join
+    (
+         select 
+            CATEGORY_ID_2,
+            CATEGORY_ID_2_DESC
+        from 
+            dc.DIM_E_LTE_HFA_EVENTTYPE
+        group by
+            CATEGORY_ID_2,
+            CATEGORY_ID_2_DESC
+     )    as eventDesc
+on
+    eventDesc.CATEGORY_ID_2 = isnull(aggView.CATEGORY_ID_2,subscribers.CATEGORY_ID_2)
+order by aggView.QCI_ID, aggView.CATEGORY_ID_2

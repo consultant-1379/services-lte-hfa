@@ -1,0 +1,12 @@
+##
+## LTE Handover Failure Analysis Cause Code List
+
+select
+    EVENT_ID_DESC,
+	CAUSE_CODE,
+	CAUSE_CODE_DESC
+from
+    DIM_E_LTE_HFA_CAUSE_CODE  
+	LEFT OUTER JOIN DIM_E_LTE_HFA_EVENTTYPE on 
+	DIM_E_LTE_HFA_CAUSE_CODE.EVENT_ID = DIM_E_LTE_HFA_EVENTTYPE.EVENT_ID
+	where CAUSE_CODE is not null

@@ -1,0 +1,62 @@
+##
+## LTE handover Failure Analysis eCell HandoverStage Group Event Analysis (using aggregation tables)
+##
+## Velocity Parameter:
+##
+##        $aggregationView the aggregation view to query against
+##
+##
+## Named PreparedStatement Parameter:
+##
+##     :dateFrom   starting time
+##     :dateTo     ending time#
+
+#set($columnsToSelect=["HIER321_ID", " CATEGORY_ID_2", "IMSI"])
+
+#set($groupTable="GROUP_TYPE_E_RAT_VEND_HIER321")
+#set($groupnameColumn="GROUP_NAME")
+#set($joinKeys=["HIER321_ID"])
+
+SELECT
+    '${groupname}' as 'Group Name',
+    eventDesc.CATEGORY_ID_2_DESC AS 'Handover Stage',
+    aggView.CATEGORY_ID_2 AS 'Category ID',
+    Failures,
+    subscribers.IMPACTED_SUBSCRIBERS as 'Impacted Subscribers'
+FROM
+    (select
+        CATEGORY_ID_2,
+        sum(NO_OF_ERRORS)
+    from
+        $aggregationView as tempAgg
+        ,GROUP_TYPE_E_RAT_VEND_HIER321 eCellGroup
+    where
+        eCellGroup.GROUP_NAME = :groupname and
+        eCellGroup.HIER321_ID = tempAgg.HIER321_ID and
+        #GET_DATETIME_RANGE()
+    group by
+        CATEGORY_ID_2
+    ) as aggView(CATEGORY_ID_2, Failures)
+    left outer join
+    (
+        select
+            count(distinct rawview.IMSI),
+            CATEGORY_ID_2
+        from
+            #if ($timerange == "TR_4")
+                #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_WITH_TAC_EXCLUSION_SPECIFY_COLUMNS_GROUPS_WEEK($TECH_PACK_LIST.getAllRawTables() "rawview" $columnsToSelect)
+            #else
+                #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_WITH_TAC_EXCLUSION_SPECIFY_COLUMNS_GROUPS($TECH_PACK_LIST.getAllRawTables() "rawview" $columnsToSelect)
+            #end
+        group by
+            CATEGORY_ID_2
+        ) as subscribers(IMPACTED_SUBSCRIBERS, CATEGORY_ID_2)
+    on (
+        aggView.CATEGORY_ID_2 = subscribers.CATEGORY_ID_2
+        )
+    join (
+        select distinct    CATEGORY_ID_2,CATEGORY_ID_2_DESC
+        from DIM_E_LTE_HFA_EVENTTYPE) eventDesc
+        on (
+         eventDesc.CATEGORY_ID_2 = aggView.CATEGORY_ID_2
+)

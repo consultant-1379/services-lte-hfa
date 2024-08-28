@@ -1,0 +1,51 @@
+##
+## LTE Handover Failure Network Event Volume Analysis (using raw tables)
+##
+## Velocity Parameter: 
+##		
+## Named PreparedStatement Parameter:
+##	   	$starttime 		start time
+## 		$endtime 		end time
+##		$interval 		interval for different timerange
+##     	:dateFrom   	starting time
+##     	:dateTo     	ending time
+##
+#set($columnsToSelect=["DATETIME_ID", "EVENT_ID"])
+#set($notNullColumns=["EVENT_ID"])
+
+#DEFINE_CONSTANTS()
+
+begin
+
+select
+	dateformat(err.TS, 'yyyy-mm-dd hh:mm:ss.S') as 'TIME',
+	isnull(sum (case when err.EVENT_ID = 4111 then isnull(err.NO_OF_ERRORS, 0) end),0) as INTERNAL_PROC_HO_PREP_X2_IN,       
+    isnull(sum (case when err.EVENT_ID = 4110 then isnull(err.NO_OF_ERRORS, 0) end),0) as INTERNAL_PROC_HO_PREP_X2_OUT,    
+    isnull(sum (case when err.EVENT_ID = 4113 then isnull(err.NO_OF_ERRORS, 0) end),0) as INTERNAL_PROC_HO_EXEC_X2_IN,    
+    isnull(sum (case when err.EVENT_ID = 4112 then isnull(err.NO_OF_ERRORS, 0) end),0) as INTERNAL_PROC_HO_EXEC_X2_OUT,    
+    isnull(sum (case when err.EVENT_ID = 4103 then isnull(err.NO_OF_ERRORS, 0) end),0) as INTERNAL_PROC_HO_PREP_S1_IN,
+    isnull(sum (case when err.EVENT_ID = 4102 then isnull(err.NO_OF_ERRORS, 0) end),0) as INTERNAL_PROC_HO_PREP_S1_OUT, 
+    isnull(sum (case when err.EVENT_ID = 4105 then isnull(err.NO_OF_ERRORS, 0) end),0) as INTERNAL_PROC_HO_EXEC_S1_IN,
+    isnull(sum (case when err.EVENT_ID = 4104 then isnull(err.NO_OF_ERRORS, 0) end),0) as INTERNAL_PROC_HO_EXEC_S1_OUT
+	
+from
+	(
+		select
+			tmp_st,
+			EVENT_ID,
+			isnull(count(*), 0) as NO_OF_ERRORS
+		from
+			#REPLACE_RAW_VIEW_WITH_RAW_TABLES_WITH_TAC_EXCLUSION_SPECIFY_COLUMNS_AND_NOT_NULL_COLUMNS($TECH_PACK_LIST.getAllRawTables() "err" $columnsToSelect $notNullColumns)
+			,#GET_CHART_TIMES($starttime $endtime $interval)
+		where        
+			DATETIME_ID >= tmp_st
+			and DATETIME_ID < tmp_et
+		group by
+			tmp_st,
+			EVENT_ID
+	) as err ( TS, EVENT_ID, NO_OF_ERRORS)
+group by
+	TS
+order by
+	TS
+end

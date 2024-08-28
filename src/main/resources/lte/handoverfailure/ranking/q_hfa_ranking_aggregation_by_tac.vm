@@ -1,0 +1,42 @@
+## LTE Handover Failure Analysis Terminal Ranking (using aggregation tables)
+##
+## Velocity Parameter:
+##
+## Named PreparedStatement Parameter:
+##
+##     :dateFrom   starting time
+##     :dateTo     ending time
+##
+
+SELECT
+    #if($count > 0)
+      top $count
+    #end
+    RANK()
+    over (ORDER BY Failures DESC) AS Rank,
+    $CATEGORY_ID_2 as 'Category ID',
+    case when (AGG_TABLE.TAC != null AND  AGG_TABLE.TAC != 0 ) then isnull(DIM_E_SGEH_TAC.VENDOR_NAME,'Manufacturer Unknown')
+         when (AGG_TABLE.TAC = 0 ) then isnull(DIM_E_SGEH_TAC.VENDOR_NAME,'Manufacturer Invalid')
+         else null end AS 'Terminal Make',
+    case when (AGG_TABLE.TAC != null AND  AGG_TABLE.TAC != 0 ) then isnull(DIM_E_SGEH_TAC.MARKETING_NAME,'Model Unknown')
+         when (AGG_TABLE.TAC = 0 ) then isnull(DIM_E_SGEH_TAC.MARKETING_NAME,'Model Invalid')
+         else null end 'AS Terminal Model',
+    AGG_TABLE.TAC as TAC,
+    AGG_TABLE.FAILURES AS Failures
+FROM
+    (
+    SELECT
+    TAC,
+    SUM(NO_OF_ERRORS) AS FAILURES
+    FROM
+    $aggregationView
+    WHERE
+    CATEGORY_ID_2 = :CATEGORY_ID_2 AND
+    #GET_DATETIME_RANGE()
+    GROUP BY
+    TAC
+    ) AGG_TABLE
+ LEFT OUTER JOIN
+    DIM_E_SGEH_TAC
+ON
+    AGG_TABLE.TAC = DIM_E_SGEH_TAC.TAC

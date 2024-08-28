@@ -1,0 +1,89 @@
+#macro(LTE_HFA_ENODEB_GROUP_CCAS_QUERY_SUB_COUNT $errTable)
+    select
+  errRef.CAUSE_CODE as CAUSE_CODE,
+    errRef.EVENT_ID || '-'  || errRef.CAUSE_CODE as CAUSE_CODE_EVENT_ID,
+  IMSI
+    from
+    dc.${errTable} as errRef,
+    dc.GROUP_TYPE_E_RAT_VEND_HIER3 enodeBGroup
+  where
+    enodeBGroup.GROUP_NAME = :groupname
+    and enodeBGroup.HIER3_ID = errRef.HIER3_ID
+    and
+    #if($timerange == "TR_4")
+    #GET_DATE_RANGE_LOCAL()
+    #else
+    #GET_DATETIME_RANGE()
+    #end
+    and #GET_TAC_EXCLUSION()
+    and CAUSE_CODE is not null
+    and #GET_LTE_HFA_CAUSE_CODE_PIE_CHART_CAUSE_CODE_WHERE_LIST ("errRef" $causeCodeData)
+    group by
+  IMSI,
+  CAUSE_CODE,
+    CAUSE_CODE_EVENT_ID
+#end
+
+select
+  events.CAUSE_CODE as 'Cause Code',
+  ccref.CAUSE_CODE_DESC_PIE as 'Cause Code Description',
+  isnull(events.Failures,0) as 'Failures',
+  subscribers.NO_OF_SUBSCRIBERS as 'Impacted Subscribers',
+  events.EVENT_ID as EVENT_ID,
+  eventDesc.EVENT_ID_DESC as EVENT_ID_DESC,
+  NULL as NODE,
+  :groupname as 'Group Name'
+from
+  (
+  select
+      errRef.CAUSE_CODE as CAUSE_CODE,
+    errRef.EVENT_ID || '-'  || errRef.CAUSE_CODE as CAUSE_CODE_EVENT_ID,
+    sum(NO_OF_ERRORS),
+    errRef.EVENT_ID as EVENT_ID
+        from
+    dc.$aggregationView as errRef,
+    dc.GROUP_TYPE_E_RAT_VEND_HIER3 enodeBGroup
+    where
+    enodeBGroup.GROUP_NAME = :groupname
+    and enodeBGroup.HIER3_ID = errRef.HIER3_ID
+    and #GET_DATETIME_RANGE()
+    and #GET_LTE_HFA_CAUSE_CODE_PIE_CHART_CAUSE_CODE_WHERE_LIST ("errRef" $causeCodeData)
+        group by
+      CAUSE_CODE,
+    CAUSE_CODE_EVENT_ID,
+    EVENT_ID
+  )as events(CAUSE_CODE,CAUSE_CODE_EVENT_ID,Failures,EVENT_ID)
+full outer join
+  (
+        select
+      sub.CAUSE_CODE as CAUSE_CODE,
+    sub.CAUSE_CODE_EVENT_ID as CAUSE_CODE_EVENT_ID,
+            isnull(count(distinct(IMSI)),0) as NO_OF_SUBSCRIBERS
+        from
+        (
+      #foreach ($errtable in $TECH_PACK_LIST.getAllRawTables())
+  #LTE_HFA_ENODEB_GROUP_CCAS_QUERY_SUB_COUNT($errtable)
+  #if($velocityCount < $TECH_PACK_LIST.getAllRawTables().size())
+    union all
+  #end
+      #end
+        ) as sub (CAUSE_CODE,CAUSE_CODE_EVENT_ID,IMSI)
+        group by
+      sub.CAUSE_CODE,
+    sub.CAUSE_CODE_EVENT_ID
+  )as subscribers(CAUSE_CODE,CAUSE_CODE_EVENT_ID,NO_OF_SUBSCRIBERS)
+on(
+  events.CAUSE_CODE = subscribers.CAUSE_CODE and
+  events.CAUSE_CODE_EVENT_ID = subscribers.CAUSE_CODE_EVENT_ID
+  )
+inner join
+  dc.DIM_E_LTE_HFA_CAUSE_CODE ccref
+on
+  (ccref.EVENT_ID = events.EVENT_ID
+  and ccref.CAUSE_CODE = events.CAUSE_CODE )
+inner join
+  dc.DIM_E_LTE_HFA_EVENTTYPE eventDesc
+on
+  (eventDesc.EVENT_ID = events.EVENT_ID )
+order by
+  events.CAUSE_CODE

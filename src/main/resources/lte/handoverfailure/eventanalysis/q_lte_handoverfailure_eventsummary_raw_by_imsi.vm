@@ -1,0 +1,36 @@
+##
+## LTE Handover Failure IMSI Event Analysis (using raw tables)
+##
+## Named PreparedStatement Parameter:
+##
+##     :dateFrom   starting time
+##     :dateTo     ending time#
+
+#set ($conditionColumns=["CATEGORY_ID_2","IMSI"])
+#set($columnsToSelect=["EVENT_ID"])
+
+SELECT
+    $imsi as 'IMSI',
+    data.EVENT_ID AS 'Event ID',
+    eventDesc.EVENT_ID_DESC as 'Event Type',
+    failures as 'Failures'
+FROM
+    (
+        select
+            count (*) as failures,
+            EVENT_ID
+        from
+       #if ($timerange=="TR_4")
+       #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_SPECIFY_COLUMNS_WEEK($TECH_PACK_LIST.getAllRawTables() "rawview" $conditionColumns $columnsToSelect)
+       #else
+       #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_SPECIFY_COLUMNS($TECH_PACK_LIST.getAllRawTables() "rawview" $conditionColumns $columnsToSelect)
+       #end
+        group by
+            EVENT_ID
+    ) as data(FAILURES, EVENT_ID)
+    join
+        DIM_E_LTE_HFA_EVENTTYPE eventDesc
+    on(
+        eventDesc.EVENT_ID = data.EVENT_ID
+        and eventDesc.CATEGORY_ID_2= :categoryId
+        )

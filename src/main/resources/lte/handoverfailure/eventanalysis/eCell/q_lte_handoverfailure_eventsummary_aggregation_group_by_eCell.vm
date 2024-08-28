@@ -1,0 +1,60 @@
+##
+## LTE Handover Failure eCell Group Event Analysis (using aggregration tables)
+##
+##
+## Named PreparedStatement Parameter:
+##
+##     :dateFrom   starting time
+##     :dateTo     ending time#
+
+
+#set($columnsToSelect=["HIER321_ID", "EVENT_ID", "IMSI"])
+#set ($conditionColumns=["CATEGORY_ID_2"])
+
+#set($groupTable="GROUP_TYPE_E_RAT_VEND_HIER321")
+#set($groupnameColumn="GROUP_NAME")
+#set($joinKeys=["HIER321_ID"])
+
+SELECT
+    '${groupname}' as 'Group Name',
+    eventDesc.EVENT_ID_DESC as 'Event Type',
+    aggView.EVENT_ID AS 'Event ID',
+    Failures as 'Failures',
+    subscribers.IMPACTED_SUBSCRIBERS as 'Impacted Subscribers'
+FROM
+    (select 
+        EVENT_ID,
+        sum(NO_OF_ERRORS)
+    from 
+        $aggregationView as tempAgg
+        ,GROUP_TYPE_E_RAT_VEND_HIER321 eCellGroup
+    where 
+        eCellGroup.GROUP_NAME = :groupname and
+        eCellGroup.HIER321_ID = tempAgg.HIER321_ID and
+        #GET_DATETIME_RANGE()
+    group by
+        EVENT_ID
+    ) as aggView(EVENT_ID, Failures)
+    left outer join
+    (
+        select
+            count(distinct rawview.IMSI),
+            EVENT_ID
+        from
+        #if ($timerange == "TR_4")
+            #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_WITH_TAC_EXCLUSION_CONDITION_COLUMNS_GROUPS_WEEK($TECH_PACK_LIST.getAllRawTables() "rawview" $conditionColumns $columnsToSelect)
+        #else
+            #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_WITH_TAC_EXCLUSION_CONDITION_COLUMNS_GROUPS($TECH_PACK_LIST.getAllRawTables() "rawview" $conditionColumns $columnsToSelect)
+        #end
+        group by
+            EVENT_ID
+        ) as subscribers(IMPACTED_SUBSCRIBERS, EVENT_ID)
+    on (        
+        aggView.EVENT_ID = subscribers.EVENT_ID
+        )
+    join
+        dc.DIM_E_LTE_HFA_EVENTTYPE eventDesc
+        on(
+            eventDesc.EVENT_ID = aggView.EVENT_ID
+            and eventDesc.CATEGORY_ID_2= :CATEGORY_ID_2
+         )    

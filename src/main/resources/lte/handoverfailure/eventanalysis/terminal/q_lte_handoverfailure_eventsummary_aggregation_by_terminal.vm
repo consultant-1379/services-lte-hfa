@@ -1,0 +1,81 @@
+##
+## LTE Handover Failure Analysis Terminal Event Analysis (using aggregation tables)
+##
+## Velocity Parameter:
+##
+##        $aggregationView the aggregation view to query against
+##
+##
+## Named PreparedStatement Parameter:
+##
+##     :dateFrom   starting time
+##     :dateTo     ending time#
+
+#set($conditionColumns=["TAC","CATEGORY_ID_2"])
+#set($columnsToSelect=["EVENT_ID", "IMSI"])
+
+SELECT
+    :TAC as 'TAC',
+    case when (TAC != null AND  TAC != 0 ) then isnull(topology.VENDOR_NAME,'Manufacturer Unknown')
+         when (TAC = 0 ) then isnull(topology.VENDOR_NAME,'Manufacturer Invalid')
+         else null end as 'Terminal Make',
+    case when (TAC != null AND  TAC != 0 ) then isnull(topology.MARKETING_NAME,'Model Unknown')
+         when (TAC = 0 ) then isnull(topology.MARKETING_NAME,'Model Invalid')
+         else null end as 'Terminal Model',
+    eventDesc.EVENT_ID_DESC as 'Event Type',
+    isnull(aggView.EVENT_ID,subscribers.EVENT_ID) AS 'Event ID',
+    isnull(aggView.Failures,subscribers.Failures) as 'Failures',
+    subscribers.IMPACTED_SUBSCRIBERS as 'Impacted Subscribers'
+FROM
+    (select
+        EVENT_ID,
+        :TAC,
+        sum(NO_OF_ERRORS)
+    from
+        $aggregationView as tempAgg
+    where
+        tempAgg.TAC = :TAC
+        and
+        #GET_DATETIME_RANGE()
+    group by
+        EVENT_ID
+    ) as aggView(EVENT_ID, TAC, Failures)
+    right outer join
+    (
+        select
+            count(distinct rawview.IMSI),
+            :TAC,
+            EVENT_ID,
+            count (*)
+        from
+            #if ($timerange == "TR_4")
+            #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_SPECIFY_COLUMNS_WEEK($TECH_PACK_LIST.getAllRawTables() "rawview" $conditionColumns $columnsToSelect)
+            #else
+            #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_SPECIFY_COLUMNS($TECH_PACK_LIST.getAllRawTables() "rawview" $conditionColumns $columnsToSelect)
+            #end
+        group by
+            EVENT_ID
+        ) as subscribers(IMPACTED_SUBSCRIBERS, TAC, EVENT_ID, Failures)
+    on (
+        aggView.EVENT_ID = subscribers.EVENT_ID
+        )
+    left outer join
+        (
+         select
+            topo.TAC,
+            topo.VENDOR_NAME,
+            topo.MARKETING_NAME
+        from
+            topo.dc.DIM_E_SGEH_TAC topo
+        where
+            topo.TAC = :TAC
+    )    as topology
+    on(
+        topology.TAC = isnull(aggView.TAC,subscribers.TAC)
+    )
+    inner join
+        dc.DIM_E_LTE_HFA_EVENTTYPE eventDesc
+    on(
+        eventDesc.EVENT_ID = isnull(aggView.EVENT_ID,subscribers.EVENT_ID)
+        and eventDesc.CATEGORY_ID_2= :CATEGORY_ID_2
+    )

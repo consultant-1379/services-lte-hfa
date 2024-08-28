@@ -1,0 +1,43 @@
+##
+## Author : EVARAKS
+## LTE Handover Failure Handover stage Summary Analysis (Raw)
+##
+## Velocity Parameter:
+##
+## Named PreparedStatement Parameter:
+##
+##     :dateFrom   starting time
+##     :dateTo     ending time
+##
+#set($columnsToSelect=["CATEGORY_ID_2", "IMSI"])
+#set($groupTable="dc.GROUP_TYPE_E_TAC")
+#set($groupnameColumn="GROUP_NAME")
+#set($joinKeys=["TAC"])
+
+SELECT
+'${groupname}' as 'Group Name',
+data.CATEGORY_ID_2 AS 'Category ID',
+handoverStageDesc.CATEGORY_ID_2_DESC as 'Handover Stage',
+FAILURES as 'Failures',
+IMPACTED_SUBSCRIBERS as 'Impacted Subscribers'
+FROM
+(
+select
+count (*),
+CATEGORY_ID_2,
+count (distinct rawview.IMSI)
+from
+#REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_SPECIFY_COLUMNS_GROUPS($TECH_PACK_LIST.getAllRawTables() "rawview" $columnsToSelect)
+group by
+CATEGORY_ID_2
+) as data(FAILURES,CATEGORY_ID_2, IMPACTED_SUBSCRIBERS)
+inner join
+(
+select distinct
+CATEGORY_ID_2,CATEGORY_ID_2_DESC
+from
+DIM_E_LTE_HFA_EVENTTYPE
+) handoverStageDesc
+on(
+handoverStageDesc.CATEGORY_ID_2 = data.CATEGORY_ID_2
+)
